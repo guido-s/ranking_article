@@ -1,130 +1,125 @@
-### Load the necessary libraries, all of which are available in CRAN. 
-library(mtrank)
-library(netmeta)
-library(tidyverse)
+### Load R packages and auxiliary R functions
+
+source("./Clinical_examples/helpers/init.R")
 
 
-### source code to get ranking based on the PReTA approach
-### Code obtained from the GitHub page: https://github.com/esm-ispm-unibe-ch/alternativenma/tree/master/R
+### Get the 'antidepressants' dataset from the R package mtrank
 
-source("./Clinical_examples/helpers/nma.krahn.output.R")
-source("./Clinical_examples/helpers/alternative_nma.R")
-source("./Clinical_examples/helpers/netmetaranks.R")
-
-
-### source code to get ranking based on the adjusted according to SWD P-scores
-### Code obtained from the GitHub page: https://github.com/DimitrisMavridis/RankingNMA/blob/master/extendedP-scores
-
-source("./Clinical_examples/helpers/Pscores_function.R")
-source("./Clinical_examples/helpers/league_table.R")
-source("./Clinical_examples/helpers/league_table_var.R")
-source("./Clinical_examples/helpers/intersect2.R")
-source("./Clinical_examples/helpers/Prepare_Multi.R")
-source("./Clinical_examples/helpers/Prepare_Single.R")
-source("./Clinical_examples/helpers/Prepare_function.R")
-source("./Clinical_examples/helpers/pscrs.R")
-source("./Clinical_examples/helpers/pscore_graph.R")
-
-### get the 'antidepressants' dataset from the mtrank package
 data("antidepressants")
 
-### RANK TREATMENTS BASED ON P-scores ###
 
-p <- pairwise(data = antidepressants,
-              event =  responders,
-              studlab = studyid,
-              treat = drug_name,
-              n = ntotal,
-              sm = "OR")
-# fit a NMA model
-mod_netmeta <- netmeta(p,reference.group = "Trazodone")
+### Rank treatments based on P-scores
 
-# visualize NMA estimates (main manuscript, Figure 3A)
-forest(mod_netmeta,
-       overall.hetstat = TRUE, addrows = 0, calcwidth.hetstat = TRUE,
-       print.I2 = FALSE, print.tau = TRUE, print.pval.Q = FALSE,
-       digits.tau = 2,
-       #
-       drop.reference.group = TRUE,
-       #
-       label.left = "Favors trazodone",
-       label.right = "Favors other treatments",
-       #
-       header.line = TRUE, spacing = 1.5,
-       #
-       file = "Main_manuscript_Figure3A.pdf")
+pw1 <- pairwise(
+  studlab = studyid, treat = drug_name,
+  event =  responders, n = ntotal,
+  data = antidepressants,
+  sm = "OR")
 
-# get ranking based on P-scores visualize NMA estimates (main manuscript, Table 1)
-netrank(mod_netmeta,small.values = "undesirable")
+# Fit NMA model
+nma1 <- netmeta(pw1, small.values = "undesirable",
+  reference.group = "Trazodone", common = FALSE)
 
-### RANK TREATMENTS BASED ON THE PROPOSED APPROACH ###
+# Figure 3A: visualize NMA estimates
+forest(nma1,
+  overall.hetstat = TRUE, addrows = 0, calcwidth.hetstat = TRUE,
+  print.tau = TRUE, digits.tau = 2,
+  print.I2 = FALSE, print.pval.Q = FALSE,
+  #
+  drop.reference.group = TRUE,
+  #
+  label.left = "Favors trazodone",
+  label.right = "Favors other treatments",
+  #
+  header.line = TRUE, spacing = 1.5,
+  #
+  file = "Figure3A.pdf", width = 6)
 
-# Define a tcc using 1.20 as the SWD
-# help(tcc)
-ranks <- tcc(mod_netmeta,
-             swd = 1.20,
-             small.values = "undesirable"
-)
+# Ranking based on P-scores
+nr1 <- netrank(nma1)
+print(nr1, digits = 2)
+
+
+### Rank treatments based on the proposed approach
+
+# Define a TCC using 1.20 as the SWD
+ranks1 <- tcc(nma1, swd = 1.20)
 
 # Visualize the TCC in terms of the basic parameters ("Treatments vs Trazodone")
-# help(forest.tcc)
-forest(ranks,label.right="Favors other",label.left = "Favors Trazodone")
+forest(ranks1,
+  label.right = "Favors other treatments",
+  label.left = "Favors Trazodone")
 
 # Fit the model and get the ability estimates
-# help(mtrank)
-mod_ability <- mtrank(ranks)
+ability1 <- mtrank(ranks1)
 
-# Extract ability estimates
-mod_ability$estimates
+# Ability estimates and probability that each treatment is ranked first
+ability1
 
-# Extract probability that each treatment is ranked first
-mod_ability$probabilities
+# Figure 3B: visualize the ability estimates
+forest(ability1, spacing = 1.5,
+  file = "Figure3B.pdf", width = 6)
 
-# Vizualize the ability estimates (main manuscript, Figure 3B)
-forest(mod_ability, spacing = 1.5,
-       file = "Main_manuscript_Figure3B.pdf")
+# Figure 4: line graph for sensitivity analysis
+sensitivity1 <- linegraph(ability1,
+  swd = seq(1.10, 1.50, by = 0.10),
+  swd.ref = 1.20, k = 6)
+#
+sensitivity1
 
-# create linegraph for sensitivity analysis (Main Manuscript, Figure 4)
-sensitivity <- linegraph(mod_ability,
-                         swd = seq(1.10,1.50,by=0.10),
-                         swd.ref = 1.20,
-                         k = 6
-)
-
-sensitivity
-
-# same colors as in Main Manuscript, Figure 4
+# Figure 4 with same colors as in main manuscript
 # install.packages("ggsci")
 # library(ggsci)
-# sensitivity+scale_color_bmj()+ylab(expression("Normalized ability (" * hat(pi)[X] * ")"))
+# sensitivity1 + scale_color_bmj() + ylab(expression("Normalized ability (" * hat(pi)[X] * ")"))
 
-### RANK TREATMENTS BASED ON THE PReTA approach ###
 
-mod_preta <- alternativenma(mod_netmeta,small.values = "bad") 
-# get ranking results (main manuscript, Table 2)
-res_preta <- cbind.data.frame("treat"=row.names(mod_preta$averages),"PReTA_ranking"=mod_preta$averages$Pscoreaverage)
-res_preta <- res_preta %>% 
-  arrange(desc(PReTA_ranking))
-res_preta
+### Rank treatments based on the PReTA approach
 
-### RANK TREATMENTS BASED ON THE ADJUSTED ACCORDING TO THE SWD P-scores ###
+anma1 <- alternativenma(nma1, small.values = "bad") 
 
-net1 <- list(mod_netmeta)
-pscores_SWD <- p_scores(net1,log(1.20),NULL,"B")
-res_pscores_SWD <- cbind.data.frame("treat"=names(pscores_SWD),"P_score"=unname(pscores_SWD))
-res_pscores_SWD  <- res_pscores_SWD  %>% 
-  arrange(desc(P_score))
-# (main manuscript, Table 2)
-res_pscores_SWD
+preta1 <- data.frame(
+  treatment = row.names(anma1$averages),
+  PReTA = round(anma1$averages$Pscoreaverage, 2))
 
-### RANK TREATMENTS BASED ON THE FREQUENTIST pBV approach ###
+preta1 %>% arrange(desc(PReTA))
 
-r <- rankogram(mod_netmeta,small.values = "undesirable",nsim = 50000)
-pBV <- as.data.frame(r$ranking.matrix.random[,1])
-names(pBV) <- c("pBV")
-pBV <- pBV %>% 
-  arrange(desc(pBV)) %>% 
-  mutate(pBV=round(pBV,digits = 2))
-# (main manuscript, Table 2)
-pBV
 
+### Rank treatments based on P-scores adjusted for the SWD
+
+pscore1_swd <- data.frame(
+  Pscore_swd = round(p_scores(list(nma1), log(1.20), NULL, "B"), 2))
+pscore1_swd %>% arrange(desc(Pscore_swd))
+
+
+### Rank treatments based on the frequentist pBV approach
+
+set.seed(1904)
+ranko1 <- rankogram(nma1, nsim = 50000)
+pBV1 <- data.frame(pBV = round(ranko1$ranking.matrix.random[, 1], 2))
+pBV1 %>% arrange(desc(pBV))
+
+
+### Table 2
+
+ORs1 <- data.frame(OR = round(exp(nma1$TE.random[, "Trazodone"]), 2)) %>%
+  rownames_to_column(var = "treatment")
+#
+pscore1 <- data.frame(Pscore = round(nr1$ranking.random, 2)) %>%
+  rownames_to_column(var = "treatment")
+#
+pscore1_swd %<>% rownames_to_column(var = "treatment")
+#
+pBV1 %<>% rownames_to_column(var = "treatment")
+#
+pi1 <- ability1$probabilities %>%
+  rename(pi_X = probability) %>%
+  mutate(pi_X = round(pi_X, 2))
+#
+ORs1 %>%
+  left_join(pscore1, by = "treatment") %>%
+  left_join(pscore1_swd, by = "treatment") %>%
+  left_join(preta1, by = "treatment") %>%
+  left_join(pBV1, by = "treatment") %>%
+  left_join(pi1, by = "treatment") %>%
+  column_to_rownames(var = "treatment") %>%
+  arrange(desc(Pscore))
